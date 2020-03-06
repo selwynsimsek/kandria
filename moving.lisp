@@ -2,7 +2,8 @@
 
 (define-subject moving (game-entity)
   ((collisions :initform (make-array 4 :initial-element NIL) :reader collisions)
-   (acceleration :initform (vec2 0 0) :accessor acceleration)))
+   (acceleration :initform (vec2 0 0) :accessor acceleration)
+   (q-final :initform (vec2 0 0) :accessor q-final)))
 
 (defmethod scan (entity target))
 
@@ -11,24 +12,29 @@
          (loc (location moving))
          (vel (velocity moving))
          (size (bsize moving))
-         (collisions (collisions moving)))
+         (collisions (collisions moving))
+         (q-final (v+ loc (v* vel (* 100 (dt ev))))))
     ;; Scan for hits
+    (setf (q-final moving) q-final)
     (fill collisions NIL)
     (loop repeat 10
           do (unless (scan surface moving) (return))
              ;; KLUDGE: If we have too many collisions in a frame, we assume
              ;;         we're stuck somewhere, so just die.
           finally (die moving))
+    ;; Set location = to q-final now
+    (format t "q-final ~a velocity ~a ~%" (q-final moving) (velocity moving))
+    (setf (location moving) (q-final moving))
     ;; Remaining velocity (if any) can be added safely.
-    (nv+ loc (v* vel (* 100 (dt ev))))
-    (vsetf vel 0 0)
+    ;(nv+ loc (v* vel (* 100 (dt ev))))
+    ;(vsetf vel 0 0)
     ;; Point test for adjacent walls
     (let ((l (scan surface (vec (- (vx loc) (vx size) 1) (vy loc))))
           (r (scan surface (vec (+ (vx loc) (vx size) 1) (vy loc))))
           (u (scan surface (vec (vx loc) (+ (vy loc) (vy size) 1) (vx size) 1))))
-      (when l (setf (aref collisions 3) l))
-      (when r (setf (aref collisions 1) r))
-      (when u (setf (aref collisions 0) u)))))
+      (when l (setf (aref collisions 3) l (q-final moving) (vec 0 0)))
+      (when r (setf (aref collisions 1) r (q-final moving) (vec 0 0)))
+      (when u (setf (aref collisions 0) u (q-final moving) (vec 0 0))))))
 
 (defmethod collides-p ((moving moving) (block block) hit)
   ;; KLUDGE: Ignore topmost edge pixel when we hit sides to allow better interaction with slopes
@@ -48,7 +54,7 @@
           ((= +1 (vx normal)) (setf (svref (collisions moving) 3) block))
           ((= -1 (vx normal)) (setf (svref (collisions moving) 1) block)))
     (nv+ loc (v* vel (hit-time hit)))
-    (nv- vel (v* normal (v. vel normal)))
+    ;(nv- vel (v* normal (v. vel normal)))
     ;; Zip out of ground in case of clipping
     (cond ((and (/= 0 (vy normal))
                  (< (vy pos) (vy loc))
@@ -74,8 +80,8 @@
          (height (vy (bsize moving)))
          (t-s (/ (block-s block) 2)))
     (setf (svref (collisions moving) 2) block)
-    (nv+ loc (v* vel (hit-time hit)))
-    (nv- vel (v* normal (v. vel normal)))
+    ;(nv+ loc (v* vel (hit-time hit)))
+    ;(nv- vel (v* normal (v. vel normal)))
     ;; Zip
     (when (< (- (vy loc) height)
              (+ (vy pos) t-s))
@@ -94,16 +100,22 @@
 (defmethod collide ((moving moving) (block slope) hit)
   (let* ((loc (location moving))
          (vel (velocity moving))
+         (q-final (q-final moving))
          (normal (hit-normal hit)))
     (setf (svref (collisions moving) 2) block)
-    (nv+ loc (v* vel (hit-time hit)))
-    (nv- vel (v* normal (v. vel normal)))
+    (let ((p1 loc) ; from lengyel 8.3
+          (q (v+ loc (v* vel (hit-time hit))))
+          (p2 q-final))
+      (setf (q-final moving) (v- p2 (v* normal (v. normal (v- p2 q))))))
+    ;(nv+ loc (v* vel (hit-time hit)))
+    ;(nv- vel (v* normal (v. vel normal)))
     ;; Zip
     (let* ((xrel (/ (- (vx loc) (vx (hit-location hit))) +tile-size+)))
       (when (< (vx normal) 0) (incf xrel))
       ;; KLUDGE: we add a bias of 0.1 here to ensure we stop colliding with the slope.
       (let ((yrel (lerp (vy (slope-l block)) (vy (slope-r block)) xrel)))
-        (setf (vy loc) (+ 0.1 yrel (vy (bsize moving)) (vy (hit-location hit))))))))
+        ;(format t "loc ~a vel ~a normal ~a~%" loc vel normal)
+        (setf (vy loc) (+ yrel (vy (bsize moving)) (vy (hit-location hit))))))))
 
 (defmethod collide ((moving moving) (other game-entity) hit)
   (let* ((loc (location moving))

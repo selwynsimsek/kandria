@@ -1,10 +1,10 @@
 (in-package #:org.shirakumo.fraf.leaf)
 ;;                          Gravity pulling down
-(define-global +vgrav+ 0.15)
+(define-global +vgrav+ 0.001)
 ;;                          How many frames to stay "grounded"
 (define-global +coyote+ 0.08)
 ;;                          Hard velocity caps
-(define-global +vlim+  (vec 10      10))
+(define-global +vlim+  (vec 3      3))
 ;;                          GRD-ACC AIR-DCC AIR-ACC GRD-LIM
 (define-global +vmove+ (vec 0.1     0.97    0.08    1.9))
 ;;                          CLIMB   DOWN    SLIDE
@@ -163,16 +163,7 @@ void main(){
              ((< 0.10 (dash-time player) 0.125)
               (nv* (nvunit acc) (vx +vdash+)))
              ((< 0.125 (dash-time player) 0.15)
-              (nv* acc (damp* (vy +vdash+) dt))))
-       ;; Adapt acceleration if we are on sloped terrain
-       ;; I'm not sure why this is necessary, but it is.
-       (when (typep (svref collisions 2) 'slope)
-         (let* ((block (svref collisions 2))
-                (normal (nvunit (vec2 (- (vy2 (slope-l block)) (vy2 (slope-r block)))
-                                      (- (vx2 (slope-r block)) (vx2 (slope-l block))))))
-                (slope (vec (- (vy normal)) (vx normal)))
-                (proj (v* slope (v. slope acc))))
-           (vsetf acc (vx proj) (vy proj)))))
+              (nv* acc (damp* (vy +vdash+) dt)))))
       (:attacking
        (nv* acc 0)
        (when (if (eq 'heavy-ground (trial::sprite-animation-name (animation player)))
